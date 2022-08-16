@@ -54,8 +54,12 @@ int main (int argc, const char * argv[]) {
 	// query CoreServices for all users
 	query = CSIdentityQueryCreate(kCFAllocatorDefault, kCSIdentityClassUser, CSGetLocalIdentityAuthority());
 
-	// execute the query (0 = don't give me hidden users; one-shot query, don't monitor for more later)
-	if (CSIdentityQueryExecute(query, 0, &error))
+	// execute the query - one-shot query, don't monitor for more later
+    // we include hidden identities because of a bug in Setup Assistant in macOS 12 (and later), which
+    // produces an IsHidden setting that causes the SA-created user to be elided from the
+    // query results.
+    // filed as FB10523893, July 2022
+	if (CSIdentityQueryExecute(query, kCSIdentityQueryIncludeHiddenIdentities, &error))
 	{
 
 		// Get results from query
@@ -67,6 +71,14 @@ int main (int argc, const char * argv[]) {
 
             // skip if this is an admin and we're skipping admins
             if (skipAdmins && CSIdentityIsMemberOfGroup(identity, adminGroup)) {
+                continue;
+            }
+            
+            // check if this has the system FFFFEEEE UUID prefix
+            // this is a patch for the above bug with IsHidden attributes
+            CFUUIDRef uuid = CSIdentityGetUUID(identity);
+            CFUUIDBytes bytes = CFUUIDGetUUIDBytes(uuid);
+            if (bytes.byte0 == 0xFF && bytes.byte1 == 0xFF && bytes.byte2 == 0xEE && bytes.byte3 == 0xEE) {
                 continue;
             }
 
